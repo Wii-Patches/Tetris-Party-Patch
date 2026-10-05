@@ -32,7 +32,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='TetrisParty-Patcher',
+    name='Tetris-Party-Patcher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -51,11 +51,11 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='TetrisParty-Patcher',
+    name='Tetris-Party-Patcher',
 )
 app = BUNDLE(
     coll,
-    name='TetrisParty-Patcher.app',
+    name='Tetris-Party-Patcher.app',
     icon=ICON,
     bundle_identifier='net.quatric.tetrisparty-patcher',
 )

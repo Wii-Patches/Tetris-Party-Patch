@@ -87,27 +87,27 @@ jobs:
         run: |
           BINS=""
           for f in wit_bin/*; do BINS="$BINS --add-binary $f:."; done
-          pyinstaller --name TetrisParty-Patcher --windowed --noconfirm \
+          pyinstaller --name Tetris-Party-Patcher --windowed --noconfirm \
             --collect-all tkinterdnd2 \
             --paths tools --add-data tools/prebuilt:prebuilt --add-data assets/logo.png:assets \
             --icon assets/icon.icns --target-architecture universal2 \
             $BINS --distpath pyinst_dist tools/gui.py
-          cp wit-gpl-2.0.txt "pyinst_dist/TetrisParty-Patcher.app/Contents/Resources/wit-gpl-2.0.txt"
+          cp wit-gpl-2.0.txt "pyinst_dist/Tetris-Party-Patcher.app/Contents/Resources/wit-gpl-2.0.txt"
           cd pyinst_dist
-          zip -qr "../Tetris-Party-Patcher-${{ matrix.target }}.zip" TetrisParty-Patcher.app
+          zip -qr "../Tetris-Party-Patch-${{ matrix.target }}.zip" Tetris-Party-Patcher.app
 
       - name: Build app (Linux)
         if: matrix.target == 'linux-x86_64'
         run: |
           BINS=""
           for f in wit_bin/*; do BINS="$BINS --add-binary $f:."; done
-          pyinstaller --name TetrisParty-Patcher --windowed --noconfirm \
+          pyinstaller --name Tetris-Party-Patcher --windowed --noconfirm \
             --collect-all tkinterdnd2 \
             --paths tools --add-data tools/prebuilt:prebuilt --add-data assets/logo.png:assets \
             $BINS --distpath pyinst_dist tools/gui.py
-          cp wit-gpl-2.0.txt pyinst_dist/TetrisParty-Patcher/
+          cp wit-gpl-2.0.txt pyinst_dist/Tetris-Party-Patcher/
           cd pyinst_dist
-          tar -czf "../Tetris-Party-Patcher-${{ matrix.target }}.tar.gz" TetrisParty-Patcher
+          tar -czf "../Tetris-Party-Patch-${{ matrix.target }}.tar.gz" Tetris-Party-Patcher
 
       - name: Build app (Windows)
         if: matrix.target == 'windows-x86_64'
@@ -115,26 +115,26 @@ jobs:
         run: |
           BINS=""
           for f in wit_bin/*; do BINS="$BINS --add-binary $f;."; done
-          pyinstaller --name TetrisParty-Patcher --windowed --noconfirm \
+          pyinstaller --name Tetris-Party-Patcher --windowed --noconfirm \
             --collect-all tkinterdnd2 \
             --paths tools --add-data "tools/prebuilt;prebuilt" --add-data "assets/logo.png;assets" \
             --icon assets/icon.ico \
             $BINS --distpath pyinst_dist tools/gui.py
-          cp wit-gpl-2.0.txt pyinst_dist/TetrisParty-Patcher/
+          cp wit-gpl-2.0.txt pyinst_dist/Tetris-Party-Patcher/
           cd pyinst_dist
-          7z a "../Tetris-Party-Patcher-${{ matrix.target }}.zip" TetrisParty-Patcher \
-            || powershell -Command "Compress-Archive -Path TetrisParty-Patcher -DestinationPath ../Tetris-Party-Patcher-${{ matrix.target }}.zip"
+          7z a "../Tetris-Party-Patch-${{ matrix.target }}.zip" Tetris-Party-Patcher \
+            || powershell -Command "Compress-Archive -Path Tetris-Party-Patcher -DestinationPath ../Tetris-Party-Patch-${{ matrix.target }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tetris-Party-Patcher-${{ matrix.target }}
-          path: Tetris-Party-Patcher-${{ matrix.target }}.*
+          name: Tetris-Party-Patch-${{ matrix.target }}
+          path: Tetris-Party-Patch-${{ matrix.target }}.*
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: Tetris-Party-Patcher-${{ matrix.target }}.*
+          files: Tetris-Party-Patch-${{ matrix.target }}.*
 
   patch-files:
     needs: check
@@ -143,25 +143,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Zip Gecko codes
-        run: zip -qr Tetris-Party-Patcher-Gecko-Codes.zip codes
+        run: zip -qr Tetris-Party-Patch-Gecko-Codes.zip codes
 
       - name: Zip Riivolution patches
-        run: zip -qr Tetris-Party-Patcher-Riivolution.zip riivolution
+        run: zip -qr Tetris-Party-Patch-Riivolution.zip riivolution
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tetris-Party-Patcher-Gecko-Codes
-          path: Tetris-Party-Patcher-Gecko-Codes.zip
+          name: Tetris-Party-Patch-Gecko-Codes
+          path: Tetris-Party-Patch-Gecko-Codes.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tetris-Party-Patcher-Riivolution
-          path: Tetris-Party-Patcher-Riivolution.zip
+          name: Tetris-Party-Patch-Riivolution
+          path: Tetris-Party-Patch-Riivolution.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Tetris-Party-Patcher-Gecko-Codes.zip
-            Tetris-Party-Patcher-Riivolution.zip
+            Tetris-Party-Patch-Gecko-Codes.zip
+            Tetris-Party-Patch-Riivolution.zip

@@ -36,7 +36,7 @@ BASE = TkinterDnD.Tk if HAVE_DND else tk.Tk
 class App(BASE):
     def __init__(self):
         super().__init__()
-        self.title('Tetris Party Deluxe Patcher')
+        self.title('Tetris-Party-Patcher')
         self.geometry('620x600')
         self.msgq = queue.Queue()
         self.busy = False
