@@ -42,21 +42,11 @@ class App(BASE):
         self.busy = False
 
         try:
-            from PIL import Image, ImageTk
-            orig = Image.open(asset('logo.png'))
-            target_w = 320
-            target_h = int(orig.height * (target_w / orig.width))
-            resized = orig.resize((target_w, target_h), Image.Resampling.LANCZOS)
-            self.logo = ImageTk.PhotoImage(resized)
+            img = tk.PhotoImage(file=asset('logo.png'))
+            self.logo = img.subsample(max(1, img.width() // 300))
             tk.Label(self, image=self.logo).pack(pady=(10, 0))
-        except Exception:
-            try:
-                img = tk.PhotoImage(file=asset('logo.png'))
-                factor = max(1, img.width() // 320)
-                self.logo = img.subsample(factor, factor)
-                tk.Label(self, image=self.logo).pack(pady=(10, 0))
-            except Exception:
-                pass
+        except Exception:                              # the window is fine without its logo
+            pass
         tk.Label(self, text='Tetris Party Deluxe  -  USA / Europe / Japan',
                  font=('Helvetica', 12, 'bold')).pack(pady=(4, 6))
 

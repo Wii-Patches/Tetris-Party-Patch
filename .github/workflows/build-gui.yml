@@ -47,8 +47,8 @@ jobs:
           sudo apt-get install -y python3-tk 2>/dev/null || true
           python -c "import tkinter; print('tkinter ok')"
 
-      - name: Install PyInstaller and Pillow
-        run: pip install pyinstaller tkinterdnd2 pillow
+      - name: Install PyInstaller
+        run: pip install pyinstaller tkinterdnd2
 
       - name: Fetch and stage wit (macOS)
         if: matrix.target == 'macos-universal'
