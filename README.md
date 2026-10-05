@@ -111,7 +111,7 @@ pre-assembled in `tools/prebuilt/`; with [devkitPPC](https://devkitpro.org/)
 and your own `main.dol` dumps you can rebuild it from `src/`:
 
 ```bash
-TP_DOLS=/dir/with/STEETR.dol,STEPTR.dol,STEJ18.dol python3 tools/gen_prebuilt.py
+TP_DOLS=/dir/with/dumps python3 tools/gen_prebuilt.py
 python3 tools/build.py        # regenerate codes/ and riivolution/
 python3 tools/check.py        # consistency checks (no game files needed)
 ```
