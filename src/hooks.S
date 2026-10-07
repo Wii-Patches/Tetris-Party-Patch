@@ -60,15 +60,15 @@ _entry:
     addi    1, 1, 0x70
     stwu    1, -96(1)           # original instruction: KPADiRead prologue
 #elif defined(HOOK_SAMPLE)
-    # KPADiRead at sample-count check: r30 = KPAD channel struct, r28 = channel
+    # KPADiRead right after WPADRead: r29 = the ring slot just written, r28 = channel
     SAVE
-    mr      3, 30
+    mr      3, 29
     mr      4, 28
     bl      gc_sample
     RESTORE_ALL
     lwz     0, 0x0c(1)
     addi    1, 1, 0x70
-    lbz     27, 314(30)         # original instruction: SampleCheck (lbz r27, 314(r30))
+    addi    0, 27, 1            # original instruction: SampleSite (addi r0, r27, 1)
 #elif defined(HOOK_PROBE)
     # WPADProbe(chan, &type)
     SAVE

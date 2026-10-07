@@ -15,35 +15,21 @@ Instead of writing a custom input engine from scratch, the patch acts as an in-f
 
 ---
 
-## 2. Low-Level Reverse-Engineered Hooks
+## 2. How the game gets its input, and the hooks
 
-The patch operates via three precision hooks in the `main.dol` binary:
+The game never polls KPAD itself. When a Wii Remote connects, WPAD calls `KPADiConnectCallback(chan, 0)`, which registers `KPADiRead` as WPAD's sampling callback and calls the game's own connect callback. From then on WPAD calls `KPADiRead(chan)` for every report the remote sends; it stores the report (`WPADRead`) in the channel's ring of 56-byte samples and calls the game's sampling callback. With no Wii Remote none of this ever happens, so a bridge that only rewrites samples inside `KPADiRead` (or polls from it) never runs. The patch therefore plays the part of the remote:
 
-### Hook 1: SI Auto-Polling (`gc_poll`)
-- **Site**: Function prologue of `KPADiRead`.
-- **Function**: Executes once per frame (~8 ms throttling via Time Base register `mftb`).
-- **Registers & Hardware**:
-  - Sets `SI_OUT(n) = 0x00400300` (standard 3-byte GameCube polling command: `CMD_GET_STATUS`).
-  - Writes to `SI_SR` (`0xCD006438`) to clear error latches and latch output buffers.
-  - Programs `SI_POLL` (`0xCD006430`) and updates `SI_SHADOW` so the OS VI retrace interrupt handler maintains active sampling.
-  - Automatically probes disconnected ports via `SIGetType` every 0.25 s to support hot-plugging.
+### Hook 1: Probe + poller + driver (`gc_probe` / `gc_poll` / `gc_drive`)
+- **Site**: prologue of `WPADProbe`, which the game calls constantly (several thousand times a second) whether or not a controller is connected. `KPADiRead`'s prologue carries the same poller hook.
+- **Poller** (`gc_poll`, throttled to ~8 ms with the Time Base): sets `SI_OUT(n) = 0x00400300`, acknowledges `SI_SR`, programs `SI_POLL` and the SDK's shadow copy so the VI retrace keeps it, probes empty ports every 0.25 s for hot-plugging, and un-wedges the SI busy flag.
+- **Driver** (`gc_drive`): for each port with a valid pad answer on a channel where WPAD has no controller, calls `KPADiConnectCallback(n, 0)` once, then `KPADiRead(n)` once per poll (~125 Hz, a Wii Remote's rate). After 20 polls without a pad it calls `KPADiConnectCallback(n, -1)`.
+- **Probe**: when a pad answers, `WPADProbe` reports `*type = 2` (Classic Controller) and returns `WPAD_ERR_OK`, unless the channel already has a real Nunchuk or Classic Controller.
+- The poller cannot live only in `KPADiRead`: the game reaches it only after `WPADProbe` succeeds, which needs a polled pad.
 
-### Hook 2: Ring Buffer Synthesis (`gc_sample`)
-- **Site**: `SampleCheck` in `KPADiRead` (instruction displaced: `lbz r27, 314(r30)`).
-- **Function**: Inspects the 16-slot ring buffer (`k + 0x13C`).
-- When samples are queued by an attached Wii Remote, converts unattached / basic samples into Classic Controller samples.
-- If no samples are queued, generates two consecutive samples into the ring buffer (with the older holding previous buttons and the newer holding current buttons) so that edge-triggered button presses and stick deltas register reliably in the game engine.
-- Formats 56-byte `WPADStatus` records:
-  - `+0x28`: Extension device type (`2` = Classic Controller)
-  - `+0x29`: Extension error code (`0` = OK)
-  - `+0x2A`: Classic Controller button mask
-  - `+0x2C / +0x2E`: Left stick X / Y (scaled to signed 16-bit range `±308`)
-  - `+0x30 / +0x32`: Right stick (C-stick) X / Y
-  - `+0x34 / +0x35`: Analog triggers L / R (`0–255`)
-
-### Hook 3: Device Presence (`gc_probe`)
-- **Site**: Prologue of `WPADProbe` (`stwu r1, -16(r1)`).
-- **Function**: If a GameCube pad is answering on port *n*, writes `*type = 2` (Classic Controller) and returns `0` (`WPAD_ERR_OK`), allowing the game's menu logic, player select screens, and in-game loops to recognize the controller immediately.
+### Hook 2: Sample synthesis (`gc_sample`)
+- **Site**: inside `KPADiRead`, right after `WPADRead` and the status byte are stored (instruction displaced: `addi r0, r27, 1`). `r29` is the ring slot just written.
+- On a channel with no remote the slot is cleared, then filled like a real Classic Controller's idle report; on a bare Wii Remote only the extension fields are filled. A real Nunchuk or Classic Controller sample is never touched.
+- 56-byte `WPADStatus` fields written: `+0x07` accelerometer at rest (`0x68`), `+0x28` extension type `2`, `+0x29` error `0`, `+0x2A` Classic buttons, `+0x2C/+0x2E` left stick, `+0x30/+0x32` right stick, `+0x34/+0x35` analog triggers, `+0x36` data format `7`.
 
 ---
 
@@ -68,7 +54,8 @@ All patch code and trampolines are self-contained:
 | Symbol / Anchor | USA (`STEETR`) | Europe (`STEPTR`) | Japan (`STEJ18`) |
 | --- | --- | --- | --- |
 | `KPADiRead` | `0x80287750` | `0x802876A0` | `0x80298B20` |
-| `SampleCheck` | `0x802877BC` | `0x8028770C` | `0x80298B8C` |
+| `SampleSite` (`KPADiRead`+0xC0) | `0x80287810` | `0x80287760` | `0x80298BE0` |
+| `KPADiConnectCallback` | `0x80287460` | `0x802873B0` | `0x80298830` |
 | `WPADProbe` | `0x802ADDF0` | `0x802ADD40` | `0x802BF250` |
 | `SIGetType` | `0x802A2B10` | `0x802A2A60` | `0x802B3F70` |
 | `OSDisableInterrupts` | `0x802977F0` | `0x80297740` | `0x802A8C50` |
@@ -85,5 +72,6 @@ All patch code and trampolines are self-contained:
 
 - **Anchor Resolver**: Exact 1-to-1 instruction pattern verification ensures relocatable bits (branches, immediate halves) match across versions.
 - **Gecko & Riivolution Roundtrip**: `tools/check.py` validates that all trampolines stay inside their allocated windows, contain no relative branches leaving their routines, and accurately parse back through the Gecko engine.
+- **Debug feed**: `DEBUG_FEED=1` builds take the pad's response from `STATE+0x40+8*port` (written over the GDB stub) and keep hook call counters at `STATE+0x70`, which lets `tools/dolphin_test.py` check the whole chain deterministically.
 - **Retail DOL Verification**: `tools/verify.py` confirms that patched DOLs only modify designated hook sites and that all displaced instructions branch back accurately to `site + 4`.
 - **Headless Dolphin Testing**: Verified against live game memory using Dolphin GDB stub remote memory protocol.

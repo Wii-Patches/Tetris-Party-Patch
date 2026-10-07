@@ -51,10 +51,12 @@ def build(region, dol):
         'FN_OSDISABLE': '0x%08Xu' % a['OSDisableInterrupts'],
         'FN_OSRESTORE': '0x%08Xu' % a['OSRestoreInterrupts'],
         'WPAD_TBL': '0x%08Xu' % a['WpadTbl'],
+        'FN_KPAD_READ': '0x%08Xu' % a['KPADiRead'],
+        'FN_KPAD_CONN': '0x%08Xu' % a['KPADiConnect'],
     }
     hooks = [('POLL', a['KPADiRead'], 0x9421FFA0, 'KPADiRead: drive the SI auto-polling for the GameCube ports'),
-             ('SAMPLE', a['SampleCheck'], 0x8B7E013A,
-              'KPADiRead: turn a GameCube pad into Classic Controller samples in the ring'),
+             ('SAMPLE', a['SampleSite'], 0x381B0001,
+              'KPADiRead: turn a GameCube pad into the Classic Controller sample WPADRead stored'),
              ('PROBE', a['WPADProbe'], 0x9421FFF0, 'WPADProbe: a GameCube pad counts as a connected controller')]
     ops, cur = [], GC_BASE
     for name, site, expect, note in hooks:

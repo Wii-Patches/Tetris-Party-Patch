@@ -77,7 +77,8 @@ class Finder:
 
 # USA (STEETR) addresses
 KPAD_READ = 0x80287750          # KPADiRead: stwu r1,-96(r1)
-SAMPLE_OFF = 0x6C               # 0x802877BC: lbz r27, 314(r30)
+SAMPLE_OFF = 0xC0               # 0x80287810: addi r0, r27, 1, right after WPADRead stored the sample
+KPAD_CONN = 0x80287460          # KPADiConnectCallback(chan, result)
 WPAD_PROBE = 0x802ADDF0         # WPADProbe(chan, &type): stwu r1,-16(r1)
 SI_GET_TYPE = 0x802A2B10        # SIGetType(chan): stwu r1,-32(r1)
 OS_DISABLE = 0x802977F0         # OSDisableInterrupts
@@ -96,7 +97,8 @@ def resolve(ref, tgt):
         OSDisableInterrupts=f.locate(OS_DISABLE, 6),
         OSRestoreInterrupts=f.locate(OS_RESTORE, 6),
     )
-    r['SampleCheck'] = r['KPADiRead'] + SAMPLE_OFF
+    r['KPADiConnect'] = f.locate(KPAD_CONN, 24)
+    r['SampleSite'] = r['KPADiRead'] + SAMPLE_OFF
     r['SiTypes'] = f.pair(SI_GET_TYPE, SI_TYPES)
     r['SiBusy'] = r['SiTypes'] - 0x18
     r['SiShadow'] = r['SiBusy'] + 4

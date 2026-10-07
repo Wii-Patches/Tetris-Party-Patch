@@ -29,11 +29,17 @@ struct st {
     u32 poll_tb;        /* last time gc_poll did its work */
     u32 busy_tb;        /* when si:: was first seen busy (0 = idle) */
     u32 probe_tb[4];    /* last SIGetType per port */
-    u32 prev_btn[4];    /* the Classic Controller buttons of the previous frame's sample */
     u8 norep[4];        /* consecutive polls with NOREP latched on the port */
-    u8 ours[4];         /* the last KPAD sample on this channel was ours */
+    u8 conn[4];         /* we told KPAD that a controller connected on this channel */
+    u8 miss[4];         /* consecutive polls without a pad on a connected channel */
+    u32 guard;          /* gc_drive() is running */
 };
 #define ST ((volatile struct st *)STATE)
+#ifdef DEBUG_FEED
+#define DBG(i) (R32(STATE + 0x70 + 4 * (i))++)    /* hook call counters for test builds */
+#else
+#define DBG(i) ((void)0)
+#endif
 
 static inline u32 tb(void)
 {
@@ -65,7 +71,15 @@ static inline int gc_in(u32 chan, u32 *h, u32 *l)
     return 1;
 }
 
-#if defined(HOOK_POLL)
+/* WPAD has no controller on this channel (the same test WPADProbe itself uses) */
+static int no_remote(u32 chan)
+{
+    u8 *blk = *(u8 **)(WPAD_TBL + chan * 4);
+
+    return !blk || *(s32 *)(blk + 0x8BC) == -1 || blk[0x8C1] == 0xFD;
+}
+
+#if defined(HOOK_POLL) || defined(HOOK_PROBE)
 static inline int is_pad(u32 type)
 {
     return !(type & 0x80) && (type & 0x18000000u) == 0x08000000u;
@@ -113,14 +127,60 @@ static void poll_port(u32 n, int *probed)
     R32(SI_SHADOW) = (R32(SI_SHADOW) & ~(0x88u >> n)) | mask;
 }
 
-/* Runs at the top of KPADiRead for every channel, but does its work only once per
- * frame or so, whichever channel gets there first. */
+
+/* A channel with no Wii Remote: WPAD has no controller there, so nothing ever calls
+ * KPAD for it. */
+
+/* KPAD only runs when WPAD hands it data: WPAD calls KPADiConnectCallback when a remote
+ * connects (which registers KPADiRead as WPAD's sampling callback and tells the game),
+ * then KPADiRead for every report the remote sends. A GameCube pad sends neither, so
+ * do both ourselves: connect once per plug-in, then one sample per poll (~125 Hz, like
+ * a remote). KPADiRead pulls in the pad through the SAMPLE hook. */
+static void kpad_call(void *fn, u32 chan, s32 arg)
+{
+    u32 lvl = ((u32 (*)(void))FN_OSDISABLE)();
+
+    ((void (*)(u32, s32))fn)(chan, arg);
+    ((void (*)(u32))FN_OSRESTORE)(lvl);
+}
+
+static void gc_drive(void)
+{
+    u32 n, h, l;
+
+    if (ST->guard)
+        return;
+    ST->guard = 1;
+    for (n = 0; n < 4; n++) {
+        if (gc_in(n, &h, &l) && no_remote(n)) {
+            ST->miss[n] = 0;
+            if (!ST->conn[n]) {
+                ST->conn[n] = 1;
+                DBG(4);
+                kpad_call((void *)FN_KPAD_CONN, n, 0);
+            }
+            DBG(5);
+            kpad_call((void *)FN_KPAD_READ, n, 0);
+        } else if (ST->conn[n] && ++ST->miss[n] >= 20) {
+            ST->conn[n] = 0;
+            ST->miss[n] = 0;
+            kpad_call((void *)FN_KPAD_CONN, n, -1);
+        }
+    }
+    ST->guard = 0;
+}
+
+/* Runs at the top of KPADiRead and of WPADProbe, but does its work only once per
+ * frame or so, whichever caller gets there first. KPADiRead alone is not enough: the
+ * game only calls it once WPADProbe reports a controller, and with no Wii Remote that
+ * needs a polled pad in the first place. */
 void gc_poll(u32 chan)
 {
     u32 now = tb(), n;
     int probed = 0;
     s32 busy;
 
+    DBG(0);
     if (now - ST->poll_tb < 500000u)                        /* ~8 ms */
         return;
     ST->poll_tb = now;
@@ -142,6 +202,8 @@ void gc_poll(u32 chan)
         ((void (*)(u32))FN_OSRESTORE)(lvl);
         ST->busy_tb = 0;
     }
+
+    gc_drive();
 }
 #endif
 
@@ -163,10 +225,7 @@ void gc_poll(u32 chan)
 #define CL_DOWN  0x4000
 #define CL_RIGHT 0x8000
 
-#define KP_RING       0x13C      /* the first 16 samples of a channel's ring, 56 bytes each */
-#define KP_RING_PTR   0x4BC      /* extra sample buffer pointer */
-#define KP_RING_EXTRA 0x4C0      /* extra sample buffer count */
-#define SMP_SIZE      56
+#define SMP_SIZE      56               /* one WPADStatus sample */
 
 static inline s16 stick(u32 raw)
 {
@@ -224,90 +283,31 @@ static __attribute__((noinline)) void fill_cc(u8 *s, u32 h, u32 l, u32 b)
     s[0x35] = (u8)(l & 0xFF);                /* analog R */
     s[0x28] = 2;                             /* extension: Classic Controller */
     s[0x29] = 0;                             /* no extension error */
-    s[0x36] = 0;                             /* WPAD status: OK */
+    s[0x36] = 7;                             /* data format: the one a Classic Controller reports */
 }
 
-/* ring slot `i` of channel base `k` */
-static inline u8 *slot(u8 *k, u32 i)
+/* Called inside KPADiRead right after WPADRead has stored the newest report into the
+ * ring slot `s` of channel `chan` (the same sample a real Classic Controller would
+ * produce): a bare Wii Remote, or no remote at all, gets the pad as its Classic
+ * Controller extension; a real Nunchuk or Classic Controller is never touched. */
+void gc_sample(u8 *s, u32 chan)
 {
-    if (i < 16)
-        return k + KP_RING + i * SMP_SIZE;
-    return *(u8 **)(k + KP_RING_PTR) + (i - 16) * SMP_SIZE;
-}
+    u32 h, l;
 
-/* one fresh Classic Controller sample */
-static __attribute__((noinline)) void put_sample(u8 *s, u32 h, u32 l, u32 b)
-{
-    u32 i;
-
-    for (i = 0; i < SMP_SIZE; i++)
-        s[i] = 0;
-    fill_cc(s, h, l, b);
-}
-
-/* Called where KPADiRead asks whether samples are queued (k = the channel's KPAD struct).
- *
- * KPADRead expects at least two samples in the ring buffer to deliver input to the game.
- * We deliver two samples: the older with the previous frame's buttons (so edge triggers
- * land in the newest entry) and both with the current sticks. */
-void gc_sample(u8 *k, u32 chan)
-{
-    u32 h, l, b, i, idx, cnt, n, i1;
-
+    DBG(1);
     if (!gc_in(chan, &h, &l))
         return;
-
-    b = cc_buttons(h, l);
-    n = 16 + *(u32 *)(k + KP_RING_EXTRA);
-    if (n > 200)
-        n = 16;
-    idx = k[0x13A];                  /* next slot to write; the ring wraps at n */
-    cnt = k[0x13B];                  /* samples waiting */
-    if (cnt == 0) {
-        /* none queued: no Wii Remote (device type 0xFD), a bare one that has not
-         * delivered a sample yet, or our own sample showing through */
-        u8 dev = k[0x5C];
-        if (!(dev == 0 || dev == 0xFD || ST->ours[chan]))
-            return;
-        if (idx >= n)
-            idx = 0;
-        i1 = idx + 1 >= n ? 0 : idx + 1;
-        put_sample(slot(k, idx), h, l, ST->prev_btn[chan]);
-        put_sample(slot(k, i1), h, l, b);
-        k[0x13A] = i1 + 1 >= n ? 0 : i1 + 1;
-        k[0x13B] = 2;
-        k[0x5C] = 2;                         /* Classic Controller connected */
-        ST->prev_btn[chan] = b;
-        ST->ours[chan] = 1;
+    if (!(s[0x28] == 0 || s[0x28] == 0xFD))
         return;
-    }
+    DBG(2);
+    if (no_remote(chan)) {
+        u32 i;
 
-    /* real samples queued: a bare Wii Remote gets the pad as its extension;
-     * a real Nunchuk or Classic Controller is never touched */
-    ST->ours[chan] = 0;
-    ST->prev_btn[chan] = b;
-    if (cnt > n)
-        cnt = n;
-    for (i = 0; i < cnt; i++) {
-        u8 *s = slot(k, (idx + n - cnt + i) % n);
-        if (s[0x28] == 0 || s[0x28] == 0xFD) {
-            fill_cc(s, h, l, b);
-            k[0x5C] = 2;
-        }
+        for (i = 0; i < SMP_SIZE; i++)
+            s[i] = 0;
+        s[0x07] = 0x68;                      /* accelerometer at rest, as a real remote reports */
     }
-    if (cnt == 1) {
-        /* a lone real sample: queue a copy after it so there is a second entry */
-        u8 *src = slot(k, (idx + n - 1) % n);
-        if (src[0x28] == 2) {
-            u32 d = idx >= n ? 0 : idx;
-            u8 *dst = slot(k, d);
-            for (i = 0; i < SMP_SIZE; i++)
-                dst[i] = src[i];
-            k[0x13A] = d + 1 >= n ? 0 : d + 1;
-            k[0x13B] = 2;
-            k[0x5C] = 2;
-        }
-    }
+    fill_cc(s, h, l, cc_buttons(h, l));
 }
 #endif
 
@@ -321,8 +321,11 @@ u32 gc_probe(u32 chan, u32 *type)
     u32 t;
     s32 status;
 
+    gc_poll(chan);
+    DBG(2);
     if (!gc_in(chan, &h, &l))
         return 0;
+    DBG(3);
     blk = *(u8 **)(WPAD_TBL + chan * 4);
     if (blk) {
         t = blk[0x8C1];

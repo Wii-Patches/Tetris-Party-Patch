@@ -13,8 +13,9 @@ Dolphin. Nothing from the game is included in this repository.
 
 ## Status
 
-The patch is built for all three releases. **Not yet tested on a real Wii** -
-see [On a real Wii](#on-a-real-wii).
+The patch is built for all three releases and verified in Dolphin (a GameCube pad
+connects, navigates the menus and feeds the game's Classic Controller input).
+**Not yet tested on a real Wii** - see [On a real Wii](#on-a-real-wii).
 
 **Known limits:**
 

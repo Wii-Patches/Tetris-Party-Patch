@@ -60,7 +60,8 @@ def prepare(user, ports=1, wiimote=False):
 
 
 def launch(user, image, video):
-    subprocess.check_call(['open', '-n', '-a', DOLPHIN, '--args', '-b', '-u', user, '-e', image, '-v', video])
+    subprocess.Popen([DOLPHIN + '/Contents/MacOS/Dolphin', '-b', '-u', user, '-e', image, '-v', video],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2)
 
 

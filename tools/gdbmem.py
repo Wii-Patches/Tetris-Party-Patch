@@ -72,11 +72,11 @@ class Gdb:
             r = None
             for attempt in range(3):
                 r = self.cmd('m%x,%x' % (addr + off, n))
-                if r and not r.startswith('E'):
+                if r and not (len(r) == 3 and r.startswith('E')):
                     break
                 time.sleep(0.2)
                 self.drain(0.2)
-            if not r or r.startswith('E'):
+            if not r or (len(r) == 3 and r.startswith('E')):
                 raise RuntimeError('read %08X+%X failed: %r' % (addr + off, n, r))
             out += bytes.fromhex(r)
             off += n
