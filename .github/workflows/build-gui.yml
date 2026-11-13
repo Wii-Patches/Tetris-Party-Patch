@@ -94,7 +94,7 @@ jobs:
             $BINS --distpath pyinst_dist tools/gui.py
           cp wit-gpl-2.0.txt "pyinst_dist/Tetris-Party-Patcher.app/Contents/Resources/wit-gpl-2.0.txt"
           cd pyinst_dist
-          zip -qr "../Tetris-Party-Patch-${{ matrix.target }}.zip" Tetris-Party-Patcher.app
+          zip -qr "../Tetris-Party-ISO-Patcher-${{ matrix.target }}.zip" Tetris-Party-Patcher.app
 
       - name: Build app (Linux)
         if: matrix.target == 'linux-x86_64'
@@ -107,7 +107,7 @@ jobs:
             $BINS --distpath pyinst_dist tools/gui.py
           cp wit-gpl-2.0.txt pyinst_dist/Tetris-Party-Patcher/
           cd pyinst_dist
-          tar -czf "../Tetris-Party-Patch-${{ matrix.target }}.tar.gz" Tetris-Party-Patcher
+          tar -czf "../Tetris-Party-ISO-Patcher-${{ matrix.target }}.tar.gz" Tetris-Party-Patcher
 
       - name: Build app (Windows)
         if: matrix.target == 'windows-x86_64'
@@ -122,19 +122,19 @@ jobs:
             $BINS --distpath pyinst_dist tools/gui.py
           cp wit-gpl-2.0.txt pyinst_dist/Tetris-Party-Patcher/
           cd pyinst_dist
-          7z a "../Tetris-Party-Patch-${{ matrix.target }}.zip" Tetris-Party-Patcher \
-            || powershell -Command "Compress-Archive -Path Tetris-Party-Patcher -DestinationPath ../Tetris-Party-Patch-${{ matrix.target }}.zip"
+          7z a "../Tetris-Party-ISO-Patcher-${{ matrix.target }}.zip" Tetris-Party-Patcher \
+            || powershell -Command "Compress-Archive -Path Tetris-Party-Patcher -DestinationPath ../Tetris-Party-ISO-Patcher-${{ matrix.target }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Tetris-Party-Patch-${{ matrix.target }}
-          path: Tetris-Party-Patch-${{ matrix.target }}.*
+          name: Tetris-Party-ISO-Patcher-${{ matrix.target }}
+          path: Tetris-Party-ISO-Patcher-${{ matrix.target }}.*
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: Tetris-Party-Patch-${{ matrix.target }}.*
+          files: Tetris-Party-ISO-Patcher-${{ matrix.target }}.*
 
   patch-files:
     needs: check
